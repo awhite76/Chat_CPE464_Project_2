@@ -72,7 +72,6 @@ void recvFromClient(int clientSocket) {
 	}
 
 	printf("Message received on socket %d, length: %d, Data: %s, Flag: %d\n", clientSocket, messageLen, dataBuffer, flag);
-	// sendToClient(clientSocket, dataBuffer, messageLen, &flag);
 
 	switch (flag) {
 		case 1: {

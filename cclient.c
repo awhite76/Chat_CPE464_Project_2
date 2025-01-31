@@ -35,7 +35,7 @@ void checkArgs(int argc, char * argv[]);
 void clientControl(int clientSocket);
 void processStdin(int clientSocket);
 void processMsgFromServer(int clientSocket);
-void unicastMessage(uint8_t *buff, uint8_t *sendBuff);
+uint8_t unicastMessage(uint8_t *buff, uint8_t *sendBuff);
 
 // Globals
 char clientName[101];
@@ -70,11 +70,10 @@ void sendToServer(int socketNum, uint8_t flag, uint8_t *buff)
 			/* Send client handle to server */
 			uint8_t handleLength = strlen((char *)buff) + 1;
 			sendLen = handleLength + 1;
-			clientLength = handleLength;
+			clientLength = handleLength - 1;
 			memcpy(clientName, buff, handleLength);
 			memcpy(sendBuf, &handleLength, 1);
 			memcpy(sendBuf + 1, buff, handleLength);
-			break;
 		}
 		case 4: {
 			/* Broadcast */
@@ -83,7 +82,7 @@ void sendToServer(int socketNum, uint8_t flag, uint8_t *buff)
 		}
 		case 5:
 			/* Unicast Message */
-			printf("Unicast Message\n");
+			sendLen = unicastMessage(buff, sendBuf);
 			break;
 
 		case 6:
@@ -100,10 +99,8 @@ void sendToServer(int socketNum, uint8_t flag, uint8_t *buff)
 			fflush(stdout);
 			return;
 	}
-
-	uint8_t *flag_p = &flag;
 	
-	sent = sendPDU(socketNum, sendBuf, sendLen, flag_p);
+	sent = sendPDU(socketNum, sendBuf, sendLen, &flag);
 	if (sent < 0) {
 		perror("send call");
 		exit(-1);
@@ -166,12 +163,13 @@ void clientControl(int clientSocket) {
 }
 
 void processStdin(int clientSocket) {
-	uint8_t buff[MAXBUF], sendBuff[MAXBUF];   
+	uint8_t buff[MAXBUF], buffcp[MAXBUF];   
 	int sendLen = readFromStdin(buff);
+	memcpy(buffcp, buff, MAXBUF);
 	printf("\tRead: %s string len: %d (including null)\n", buff, sendLen);
 
 	// Extract command using strtok
-    char *command = strtok((char *)buff, " ");
+    char *command = strtok((char *)(buffcp), " ");
     if (!command) {
         printf("Invalid input\n");
         return;
@@ -181,7 +179,6 @@ void processStdin(int clientSocket) {
 	uint8_t flag = 0;
     if (strcmp(command, "%M") == 0 || strcmp(command, "%m") == 0) {
 		flag = 5;
-        unicastMessage(buff, sendBuff);
     // } else if (strcmp(command, "%C") == 0) {
     //     processCommandC(buff);
     // } else if (strcmp(command, "%B") == 0) {
@@ -192,8 +189,9 @@ void processStdin(int clientSocket) {
         printf("Unknown command: %s\n", command);
     }
 
+	printf("BUFF: %s\n", buff + 3);
 
-	sendToServer(clientSocket, flag, sendBuff);
+	sendToServer(clientSocket, flag, buff + 3);
 }
 
 void processMsgFromServer(int socketNum) {
@@ -253,34 +251,39 @@ void processMsgFromServer(int socketNum) {
 	fflush(stdout);
 }
 
-void unicastMessage(uint8_t *buff, uint8_t *sendBuff) {
+uint8_t unicastMessage(uint8_t *buff, uint8_t *sendBuff) {
     // Extract the client handle
     char *handle = strtok((char *)buff, " ");
     if (!handle) {
         printf("Invalid input format for %%M\n");
-        return;
+        return -1;
     }
 
     uint8_t length = strlen(handle);
     if (length > 100) {
         printf("Invalid handle: too long\n");
-        return;
+        return -1;
     }
+	printf("Here1\n");
 
     // Extract the remaining message
-	char *message = strchr((char *)(buff + length + 1), ' ');
+	char *message = (char *)(buff + length + 1);
+	uint8_t messageLen = strlen(message) + 1;
 
     uint8_t numHandles = 1;
 
     // Construct the send buffer
+	printf("%d%s%d%d%s%s\n", clientLength, clientName, numHandles, length, handle, message);
     memcpy(sendBuff, &clientLength, 1);
     memcpy(sendBuff + 1, clientName, clientLength);
     memcpy(sendBuff + clientLength + 1, &numHandles, 1);
     memcpy(sendBuff + clientLength + 2, &length, 1);
 	memcpy(sendBuff + clientLength + 3, handle, length);
-    memcpy(sendBuff + clientLength + length + 3, message, strlen(message));
+    memcpy(sendBuff + clientLength + length + 3, message, messageLen);
 
     printf("Unicast Message Prepared: Handle=%s, Message=%s\n", handle, message);
+
+	return clientLength + length + messageLen + 3;
 }
 
 

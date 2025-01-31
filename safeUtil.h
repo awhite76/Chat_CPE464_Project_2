@@ -7,6 +7,7 @@
 #define __SAFEUTIL_H__
 
 #include <stdint.h>
+#include <stddef.h>
 
 int safeRecv(int socketNum, uint8_t * buffer, int bufferLen, int flag);
 int safeSend(int socketNum, uint8_t * buffer, int bufferLen, int flag);

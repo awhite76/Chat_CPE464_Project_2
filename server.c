@@ -37,6 +37,7 @@ void addNewSocket(int mainServerSocket);
 void processClient(int clientSocket);
 void sendToClient(int socketNum, uint8_t *data_buff, int sendLen, uint8_t *flag);
 void newClient(uint8_t *buff, int msgLen, int socket);
+void rerouteMessage(uint8_t *buff, int lengthOfData, uint8_t *flag_p);
 
 int main(int argc, char *argv[])
 {
@@ -86,10 +87,12 @@ void recvFromClient(int clientSocket) {
 		}
 		case 5:
 			/* Unicast Message */
+			rerouteMessage(dataBuffer, messageLen, &flag);
 			break;
 
 		case 6:
 			/* Multicast */
+			rerouteMessage(dataBuffer, messageLen, &flag);
 			break;
 
 		case 10:
@@ -169,18 +172,21 @@ void processClient(int clientSocket) {
 
 void newClient(uint8_t *buff, int msgLen, int socket) {
 	uint8_t handleSize;
+	uint8_t handle[101];
 	
-	// Get handle size from buffer
+	// Extract from buffer
 	memcpy(&handleSize, buff, 1);
+	memcpy(handle, buff + 1, handleSize);
+	handle[handleSize] = '\0';
 
 	// Check if valid handle
-	if (strlen((char *)(buff + 1)) == 0) {
+	if (strlen((char *)handle) == 0) {
 		fprintf(stderr, "Can't set handle to empty string\n");
 		return;
 	}
 
 	// Add handle to handle table
-	int res = addHandle((char *)(buff + 1), socket);
+	int res = addHandle((char *)handle, socket);
 
 	// Send response to client
 	uint8_t flag;
@@ -194,4 +200,37 @@ void newClient(uint8_t *buff, int msgLen, int socket) {
 	}
 }
 
+void rerouteMessage(uint8_t *buff, int lengthOfData, uint8_t *flag_p) {
+	uint8_t srcHandle[100], dstHandle[101], srcLen, dstLen, dstNum;
+	int socket = 0;
 
+	// Extract application header
+	memcpy(&srcLen, buff, 1);
+	memcpy(srcHandle, buff + 1, srcLen);
+	memcpy(&dstNum, buff + 1 + srcLen, 1);
+
+	// Iteratively set destination
+	int offset = 2 + srcLen;
+	printf("DstNum: %d\n", dstNum);
+	for (int i = 0; i < dstNum; i++) {
+		memcpy(&dstLen, buff + offset, 1);
+		memcpy(dstHandle, buff + offset + 1, dstLen);
+
+		offset += 1 + dstLen;
+
+		// Null terminate dst handle
+		dstHandle[dstLen] = '\0';
+
+		// Look up socket number of dst
+		socket = lookUpHandle((char *)dstHandle);
+		if (socket < 0) {
+			fprintf(stderr, "Couldn't find handle: %s\n", dstHandle);
+			// send back to client
+		}
+
+		printf("Sending on socket: %d\n", socket);
+
+		// Send packet
+		sendPDU(socket, buff, lengthOfData, flag_p);
+	}
+}

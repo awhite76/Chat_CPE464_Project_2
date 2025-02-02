@@ -26,87 +26,38 @@
 #include "sendrecvUtil.h"
 #include "pollLib.h"
 
-#define MAXBUF 1400
+#define MAXBUF 1401
 #define DEBUG_FLAG 1
 
-void sendToServer(int socketNum, uint8_t flag, uint8_t *buff);
 int readFromStdin(uint8_t * buffer);
 void checkArgs(int argc, char * argv[]);
-void clientControl(int clientSocket);
-void processStdin(int clientSocket);
-void processMsgFromServer(int clientSocket);
-uint8_t unicastMessage(uint8_t *buff, uint8_t *sendBuff);
+void clientControl();
+void processStdin();
+void processMsgFromServer();
+void sendHandle(char *handle);
+void unicastMessage(uint8_t *buff);
+void sendChunkByChunk(uint8_t *appHeader, int headerLen, char *msg, uint8_t *flag_p);
+void recvMsg(uint8_t *buff);
 
 // Globals
-char clientName[101];
+char clientName[100];
 uint8_t clientLength = 0;
+int clientSocket = 0;
 
 
 int main(int argc, char * argv[])
-{
-	int socketNum = 0;         //socket descriptor
-	
+{	
 	checkArgs(argc, argv);
 
 	// set up the TCP Client socket
-	socketNum = tcpClientSetup(argv[2], argv[3], DEBUG_FLAG);
+	clientSocket = tcpClientSetup(argv[2], argv[3], DEBUG_FLAG);
 
 	// Send client handle to server
-	sendToServer(socketNum, 1, (uint8_t *)argv[1]);
+	sendHandle(argv[1]);
 
-	clientControl(socketNum);
+	clientControl();
 		
 	return 0;
-}
-
-void sendToServer(int socketNum, uint8_t flag, uint8_t *buff)
-{
-	uint8_t sendBuf[MAXBUF];   //data buffer
-	int sendLen = 0;        //amount of data to send
-	int sent = 0;            //actual amount of data sent/* get the data and send it   */
-
-	switch (flag) {
-		case 1: {
-			/* Send client handle to server */
-			uint8_t handleLength = strlen((char *)buff) + 1;
-			sendLen = handleLength + 1;
-			clientLength = handleLength - 1;
-			memcpy(clientName, buff, handleLength);
-			memcpy(sendBuf, &handleLength, 1);
-			memcpy(sendBuf + 1, buff, handleLength);
-		}
-		case 4: {
-			/* Broadcast */
-			
-			break;
-		}
-		case 5:
-			/* Unicast Message */
-			sendLen = unicastMessage(buff, sendBuf);
-			break;
-
-		case 6:
-			/* Multicast */
-			break;
-
-		case 10:
-			/* Request List of Handles */
-			break;
-		
-		default: 
-			printf("Invalid Command\n");
-			printf("$: ");
-			fflush(stdout);
-			return;
-	}
-	
-	sent = sendPDU(socketNum, sendBuf, sendLen, &flag);
-	if (sent < 0) {
-		perror("send call");
-		exit(-1);
-	}
-
-	printf("\tAmount of data sent is: %d\n", sent);
 }
 
 int readFromStdin(uint8_t * buffer)
@@ -144,7 +95,7 @@ void checkArgs(int argc, char * argv[])
 	}
 }
 
-void clientControl(int clientSocket) {
+void clientControl() {
 	int socketNumber = 0;
 	// Initialize poll set
 	setupPollSet();
@@ -157,12 +108,12 @@ void clientControl(int clientSocket) {
 		if (socketNumber == STDIN_FILENO) {
 			processStdin(clientSocket);
 		} else if (socketNumber == clientSocket) {
-			processMsgFromServer(socketNumber);
+			processMsgFromServer();
 		}
 	}
 }
 
-void processStdin(int clientSocket) {
+void processStdin() {
 	uint8_t buff[MAXBUF], buffcp[MAXBUF];   
 	int sendLen = readFromStdin(buff);
 	memcpy(buffcp, buff, MAXBUF);
@@ -176,55 +127,63 @@ void processStdin(int clientSocket) {
     }
 
     // Route command to the appropriate function
-	uint8_t flag = 0;
     if (strcmp(command, "%M") == 0 || strcmp(command, "%m") == 0) {
-		flag = 5;
-    // } else if (strcmp(command, "%C") == 0) {
-    //     processCommandC(buff);
+		unicastMessage(buff);
+    } else if (strcmp(command, "%C") == 0 || strcmp(command, "%c") == 0) {
+        unicastMessage(buff);
     // } else if (strcmp(command, "%B") == 0) {
     //     processCommandB(buff);
     // } else if (strcmp(command, "%L") == 0) {
     //     processCommandL(buff);
     } else {
         printf("Unknown command: %s\n", command);
+		printf("$: ");
+		fflush(stdout);
     }
-
-	printf("BUFF: %s\n", buff + 3);
-
-	sendToServer(clientSocket, flag, buff + 3);
 }
 
-void processMsgFromServer(int socketNum) {
+void processMsgFromServer() {
 	uint8_t recvBuf[MAXBUF];
     int recvLen = 0;
 
 	uint8_t flag;
 
     // Receive data from the server
-    recvLen = recvPDU(socketNum, recvBuf, MAXBUF, &flag);
+    recvLen = recvPDU(clientSocket, recvBuf, MAXBUF, &flag);
     if (recvLen == 0) {
         // Server has terminated the connection
         printf("\nServer has terminated\n");
-        close(socketNum);
+        close(clientSocket);
         exit(0);
     } else if (recvLen < 0) {
         perror("recv call2");
-        close(socketNum);
+        close(clientSocket);
         exit(-1);
     }
 
 	switch (flag) {
 		case 2: {
 			/* Handle good */
-			printf("$: ");
-			fflush(stdout);
-			return;
+			break;
 		}
 		
 		case 3: {
 			/* Handle Taken */
 			printf("Handle already in use: %s\n", (char *)recvBuf);
         	exit(0);
+			break;
+		}
+
+		case 5: {
+			/* Incoming Message */
+			recvMsg(recvBuf);
+			break;
+		}
+
+		case 6: {
+			/* Incoming Message */
+			recvMsg(recvBuf);
+			break;
 		}
 
 		case 7:
@@ -251,39 +210,142 @@ void processMsgFromServer(int socketNum) {
 	fflush(stdout);
 }
 
-uint8_t unicastMessage(uint8_t *buff, uint8_t *sendBuff) {
-    // Extract the client handle
-    char *handle = strtok((char *)buff, " ");
-    if (!handle) {
-        printf("Invalid input format for %%M\n");
-        return -1;
-    }
+void unicastMessage(uint8_t *buff) {
+	uint8_t flag = 0;
+    // Extract the command 
+    char *command = strtok((char *)buff, " ");
+	if (strcmp(command, "%m") == 0 || strcmp(command, "%M") == 0) {
+		flag = 5;
+	} else if (strcmp(command, "%c") == 0 || strcmp(command, "%C") == 0) {
+		flag = 6;
+	}
 
-    uint8_t length = strlen(handle);
-    if (length > 100) {
-        printf("Invalid handle: too long\n");
-        return -1;
-    }
-	printf("Here1\n");
+	// Get number of destinations
+	int numDst_int = 1;
+	if (flag == 6) {
+		numDst_int = atoi(strtok(NULL, " "));
 
-    // Extract the remaining message
-	char *message = (char *)(buff + length + 1);
-	uint8_t messageLen = strlen(message) + 1;
+		// Check number of destinations
+		if (numDst_int > 9 || numDst_int < 2) {
+			fprintf(stderr, "Invalid number of recipients: %d\n", numDst_int);
+			return;
+		}
+	}
 
-    uint8_t numHandles = 1;
+	uint8_t numDst = (uint8_t)numDst_int;
+	printf("NumDst: %d\n", numDst);
 
-    // Construct the send buffer
-	printf("%d%s%d%d%s%s\n", clientLength, clientName, numHandles, length, handle, message);
-    memcpy(sendBuff, &clientLength, 1);
-    memcpy(sendBuff + 1, clientName, clientLength);
-    memcpy(sendBuff + clientLength + 1, &numHandles, 1);
-    memcpy(sendBuff + clientLength + 2, &length, 1);
-	memcpy(sendBuff + clientLength + 3, handle, length);
-    memcpy(sendBuff + clientLength + length + 3, message, messageLen);
+	// Create app header
+	int headerLength = 2 + clientLength;
+	uint8_t header[MAXBUF];
 
-    printf("Unicast Message Prepared: Handle=%s, Message=%s\n", handle, message);
+	memcpy(header, &clientLength, 1);
+	memcpy(header + 1, clientName, clientLength);
+	memcpy(header + 1 + clientLength, &numDst, 1);
 
-	return clientLength + length + messageLen + 3;
+	// Extract the handles
+	for (int i = 0; i < numDst; i++) {
+		char *handle = strtok(NULL, " ");
+		if (!handle) {
+			printf("Invalid input format: Missing handle\n");
+			return;
+		}
+
+		uint8_t length = strlen(handle);
+		if (length > 100) {
+			fprintf(stderr, "Invalid handle, handle longer than 100 characters: %s\n", handle);
+			return;
+		}
+
+		// Add handle length and handle to header
+		memcpy(header + headerLength, &length, 1);
+		memcpy(header + headerLength + 1, handle, length);
+
+		headerLength += 1 + length;
+	}
+
+	// Extract the remaining message
+    char *message = strtok(NULL, ""); 
+    if (!message) {
+        message = ""; 
+    }	
+
+	// Send message in chunks
+	sendChunkByChunk(header, headerLength, message, &flag);
 }
 
+void sendHandle(char *handle) {
+	int handleLength = strlen(handle);
+	// Check handle length
+	if (handleLength > 100) {
+		fprintf(stderr, "Invalid handle, handle longer than 100 characters: %s\n", handle);
+		exit(-1);
+	}
+
+	// Populate send buffer
+	uint8_t buff[101];
+
+	uint8_t resizedLength = (uint8_t)handleLength;
+	memcpy(buff, &resizedLength, 1);
+	memcpy(buff + 1, handle, resizedLength);
+
+	uint8_t flag = 1;
+
+	// Store client handle globally
+	clientLength = resizedLength;
+	memcpy(clientName, handle, resizedLength);
+
+	// Send packet
+	sendPDU(clientSocket, buff, resizedLength + 1, &flag);
+}
+
+void sendChunkByChunk(uint8_t *appHeader, int headerLen, char *msg, uint8_t *flag_p) {
+	uint8_t packetBuff[MAXBUF];
+	int msgLen = strlen((char *)msg);
+	int offset = 0;
+	int chunkSize = 0;
+	char nullChar = '\0';
+
+	// Add header to packet buffer
+	memcpy(packetBuff, appHeader, headerLen);
+
+	while (offset < msgLen) {
+		if (msgLen - 199 >= 0) {
+			chunkSize = 199;
+		} else {
+			chunkSize = msgLen;
+		}
+
+		// Copy message chunk into packet buffer
+		memcpy(packetBuff + headerLen, msg + offset, chunkSize);
+		memcpy(packetBuff + headerLen + chunkSize, &nullChar, 1);
+
+		sendPDU(clientSocket, packetBuff, headerLen + chunkSize + 1, flag_p);
+
+		offset += chunkSize;
+	}
+}
+
+void recvMsg(uint8_t *buff) {
+	uint8_t srcHandle[101], srcLen, dstLen, dstNum;
+
+	// Extract application header
+	memcpy(&srcLen, buff, 1);
+	memcpy(srcHandle, buff + 1, srcLen);
+	memcpy(&dstNum, buff + 1 + srcLen, 1);
+
+	// Null terminate dst handle
+	srcHandle[srcLen] = '\0';
+
+	// Get past destination handles
+	int offset = 2 + srcLen;
+	for (int i = 0; i < dstNum; i++) {
+		memcpy(&dstLen, buff + offset, 1);
+
+		offset += 1 + dstLen;
+	}
+	
+	// Print sender and message
+	printf("%s: %s\n", srcHandle, buff + offset);
+}
 

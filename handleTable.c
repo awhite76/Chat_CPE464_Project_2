@@ -17,9 +17,13 @@ void initTable() {
     tablePopulation = 0;
 }
 
+int getTablePopulation() {
+    return tablePopulation;
+}
+
 int lookUpHandle(char *handle) {
     // Iterate over table entries
-    for (int i=0; i < tableCapacity; i++) {        
+    for (int i = 0; i < tableCapacity; i++) {        
         // Compare current handle with searching handle
         if (strcmp(handle, table[i].handle) == 0) {
             return table[i].socket;
@@ -32,7 +36,7 @@ int lookUpHandle(char *handle) {
 
 char *lookUpBysocket(int socket) {
     // Iterate over table entries
-    for (int i=0; i < tableCapacity; i++) {        
+    for (int i = 0; i < tableCapacity; i++) {        
         // Compare current socket with searching socket
         if (socket == table[i].socket) {
             return table[i].handle;
@@ -52,7 +56,7 @@ int addHandle(char *handle, int socket) {
 
     // Iterate over table, store first open index, and check for matching handle
     int idx = -1;
-    for (int i=0; i < tableCapacity; i++) {        
+    for (int i = 0; i < tableCapacity; i++) {        
         // Compare current handle with empty string
         if (idx == -1 && strcmp(table[i].handle, "") == 0) {
             idx = i;
@@ -74,13 +78,36 @@ int addHandle(char *handle, int socket) {
 
 void removeHandle(char *handle) {
     // Iterate over table until you find table entry with given handle
-    for (int i=0; i < tableCapacity; i++) {        
+    for (int i = 0; i < tableCapacity; i++) {        
         // Compare current socket with searching socket
         if (strcmp(table[i].handle, handle) == 0) {
-            memset((void *)table[i].handle, 0, 101);
+            table[i].handle[0] = '\0';
             table[i].socket = 0;
             tablePopulation -= 1;
             return;
         }
     }
 }
+
+uint8_t getIthHandle(int idx, char *handle) { // 1 based indexing
+    // Iterate over table until you get the ith handle
+    int count = 0;
+    uint8_t handleLen = 0;
+    for (int i = 0; i < tableCapacity; i++) {
+        // If table entry is not empty increment the count
+        if (strcmp(table[i].handle, "")) {
+            count++;
+        }
+
+        // Copy handle to buffer and return length
+        if (count == idx) {
+            handleLen = strlen(table[i].handle);
+            memcpy(handle, table[i].handle, handleLen);
+            return handleLen;
+        }
+    }
+
+    return handleLen;
+}
+
+

@@ -35,7 +35,8 @@ void clientControl();
 void processStdin();
 void processMsgFromServer();
 void sendHandle(char *handle);
-void unicastMessage(uint8_t *buff);
+void castMessage(uint8_t *buff);
+void broadcastMessage(uint8_t *buff);
 void sendChunkByChunk(uint8_t *appHeader, int headerLen, char *msg, uint8_t *flag_p);
 void recvMsg(uint8_t *buff);
 
@@ -117,7 +118,7 @@ void processStdin() {
 	uint8_t buff[MAXBUF], buffcp[MAXBUF];   
 	int sendLen = readFromStdin(buff);
 	memcpy(buffcp, buff, MAXBUF);
-	printf("\tRead: %s string len: %d (including null)\n", buff, sendLen);
+	// printf("\tRead: %s string len: %d (including null)\n", buff, sendLen);
 
 	// Extract command using strtok
     char *command = strtok((char *)(buffcp), " ");
@@ -128,18 +129,21 @@ void processStdin() {
 
     // Route command to the appropriate function
     if (strcmp(command, "%M") == 0 || strcmp(command, "%m") == 0) {
-		unicastMessage(buff);
+		castMessage(buff);
     } else if (strcmp(command, "%C") == 0 || strcmp(command, "%c") == 0) {
-        unicastMessage(buff);
-    // } else if (strcmp(command, "%B") == 0) {
-    //     processCommandB(buff);
-    // } else if (strcmp(command, "%L") == 0) {
-    //     processCommandL(buff);
+        castMessage(buff);
+    } else if (strcmp(command, "%B") == 0 || strcmp(command, "%b") == 0) {
+        broadcastMessage(buff);
+    } else if (strcmp(command, "%L") == 0 || strcmp(command, "%l") == 0) {
+		uint8_t flag = 10;
+        sendPDU(clientSocket, buff, sendLen, &flag);
+		return;
     } else {
         printf("Unknown command: %s\n", command);
-		printf("$: ");
-		fflush(stdout);
     }
+
+	printf("$: ");
+	fflush(stdout);
 }
 
 void processMsgFromServer() {
@@ -162,23 +166,28 @@ void processMsgFromServer() {
     }
 
 	switch (flag) {
-		case 2: {
-			/* Handle good */
-			break;
-		}
-		
 		case 3: {
 			/* Handle Taken */
-			printf("Handle already in use: %s\n", (char *)recvBuf);
+			uint8_t handleSize;
+			memcpy(&handleSize, recvBuf, 1);
+			recvBuf[handleSize] = '\0';
+			printf("Handle already in use: %s\n", (char *)(recvBuf + 1));
         	exit(0);
 			break;
 		}
 
-		case 5: {
-			/* Incoming Message */
-			recvMsg(recvBuf);
+		case 4: {
+			/* Incoming Broadcast */
+			char handle[101];
+			uint8_t handleLen = 0;
+			memcpy(&handleLen, recvBuf, 1);
+			memcpy(handle, recvBuf + 1, handleLen);
+			handle[handleLen] = '\0';
+			printf("\n%s: %s\n", handle, recvBuf + 1 + handleLen);
 			break;
 		}
+
+		case 5: {/* Go to case 6 */}
 
 		case 6: {
 			/* Incoming Message */
@@ -190,27 +199,37 @@ void processMsgFromServer() {
 			/* code */
 			break;
 		
-		case 11:
-			/* code */
+		case 11: {
+			/* Number of handle entries */
+			int numHandles_n, numHandles;
+			memcpy(&numHandles_n, recvBuf, 4);
+			numHandles = ntohl(numHandles_n);
+			printf("Number of clients: %d\n", numHandles);
 			break;
+		}
 
-		case 12:
-			/* code */
+		case 12: {
+			/* Receive handle entry */
+			char handle[101];
+			uint8_t handleLen = 0;
+			memcpy(&handleLen, recvBuf, 1);
+			memcpy(handle, recvBuf + 1, handleLen);
+			handle[handleLen] = '\0';
+			printf("\t%s\n", handle);
 			break;
-		
-		case 13:
-			/* code */
-			break;
-		
+		}
+
 		default:
 			break;
 	}
 
-	printf("$: ");
-	fflush(stdout);
+	if (flag != 11 && flag != 12) {
+		printf("$: ");
+		fflush(stdout);
+	}
 }
 
-void unicastMessage(uint8_t *buff) {
+void castMessage(uint8_t *buff) {
 	uint8_t flag = 0;
     // Extract the command 
     char *command = strtok((char *)buff, " ");
@@ -233,7 +252,6 @@ void unicastMessage(uint8_t *buff) {
 	}
 
 	uint8_t numDst = (uint8_t)numDst_int;
-	printf("NumDst: %d\n", numDst);
 
 	// Create app header
 	int headerLength = 2 + clientLength;
@@ -263,6 +281,31 @@ void unicastMessage(uint8_t *buff) {
 
 		headerLength += 1 + length;
 	}
+
+	// Extract the remaining message
+    char *message = strtok(NULL, ""); 
+    if (!message) {
+        message = ""; 
+    }	
+
+	// Send message in chunks
+	sendChunkByChunk(header, headerLength, message, &flag);
+}
+
+void broadcastMessage(uint8_t *buff) {
+	uint8_t flag = 4;
+    // Extract the command 
+    char *command = strtok((char *)buff, " ");
+	if (strcmp(command, "%b") == 0 || strcmp(command, "%b") == 0) {
+		flag = 4;
+	} 
+
+	// Create app header
+	int headerLength = 1 + clientLength;
+	uint8_t header[MAXBUF];
+
+	memcpy(header, &clientLength, 1);
+	memcpy(header + 1, clientName, clientLength);
 
 	// Extract the remaining message
     char *message = strtok(NULL, ""); 
@@ -346,6 +389,6 @@ void recvMsg(uint8_t *buff) {
 	}
 	
 	// Print sender and message
-	printf("%s: %s\n", srcHandle, buff + offset);
+	printf("\n%s: %s\n", srcHandle, buff + offset);
 }
 

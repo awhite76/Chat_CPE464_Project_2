@@ -20,13 +20,14 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #include "networks.h"
 #include "safeUtil.h"
 #include "sendrecvUtil.h"
 #include "pollLib.h"
 
-#define MAXBUF 1401
+#define MAXBUF 1500
 #define DEBUG_FLAG 1
 
 int readFromStdin(uint8_t * buffer);
@@ -41,7 +42,7 @@ void sendChunkByChunk(uint8_t *appHeader, int headerLen, char *msg, uint8_t *fla
 void recvMsg(uint8_t *buff);
 
 // Globals
-char clientName[100];
+char clientName[101];
 uint8_t clientLength = 0;
 int clientSocket = 0;
 
@@ -69,7 +70,7 @@ int readFromStdin(uint8_t * buffer)
 	// Important you don't input more characters than you have space 
 	buffer[0] = '\0';
 
-	while (inputLen < (MAXBUF - 1) && aChar != '\n')
+	while (inputLen < 1400 && aChar != '\n')
 	{
 		aChar = getchar();
 		if (aChar != '\n')
@@ -118,7 +119,6 @@ void processStdin() {
 	uint8_t buff[MAXBUF], buffcp[MAXBUF];   
 	int sendLen = readFromStdin(buff);
 	memcpy(buffcp, buff, MAXBUF);
-	// printf("\tRead: %s string len: %d (including null)\n", buff, sendLen);
 
 	// Extract command using strtok
     char *command = strtok((char *)(buffcp), " ");
@@ -136,7 +136,7 @@ void processStdin() {
         broadcastMessage(buff);
     } else if (strcmp(command, "%L") == 0 || strcmp(command, "%l") == 0) {
 		uint8_t flag = 10;
-        sendPDU(clientSocket, buff, sendLen, &flag);
+        safeSendPDU(clientSocket, buff, sendLen, &flag);
 		return;
     } else {
         printf("Unknown command: %s\n", command);
@@ -168,10 +168,9 @@ void processMsgFromServer() {
 	switch (flag) {
 		case 3: {
 			/* Handle Taken */
-			uint8_t handleSize;
-			memcpy(&handleSize, recvBuf, 1);
-			recvBuf[handleSize] = '\0';
-			printf("Handle already in use: %s\n", (char *)(recvBuf + 1));
+			clientName[clientLength] = '\0';
+			printf("Handle already in use: %s\n", clientName);
+			close(clientSocket);
         	exit(0);
 			break;
 		}
@@ -195,10 +194,17 @@ void processMsgFromServer() {
 			break;
 		}
 
-		case 7:
-			/* code */
+		case 7: {
+			/* Bad destination handle */
+			char handle[101];
+			uint8_t handleLen = 0;
+			memcpy(&handleLen, recvBuf, 1);
+			memcpy(handle, recvBuf + 1, handleLen);
+			handle[handleLen] = '\0';
+			printf("\nClient with handle %s does not exist\n", handle);
 			break;
-		
+		}
+
 		case 11: {
 			/* Number of handle entries */
 			int numHandles_n, numHandles;
@@ -339,7 +345,7 @@ void sendHandle(char *handle) {
 	memcpy(clientName, handle, resizedLength);
 
 	// Send packet
-	sendPDU(clientSocket, buff, resizedLength + 1, &flag);
+	safeSendPDU(clientSocket, buff, resizedLength + 1, &flag);
 }
 
 void sendChunkByChunk(uint8_t *appHeader, int headerLen, char *msg, uint8_t *flag_p) {
@@ -348,11 +354,12 @@ void sendChunkByChunk(uint8_t *appHeader, int headerLen, char *msg, uint8_t *fla
 	int offset = 0;
 	int chunkSize = 0;
 	char nullChar = '\0';
+	bool firstIter = true;
 
 	// Add header to packet buffer
 	memcpy(packetBuff, appHeader, headerLen);
 
-	while (offset < msgLen) {
+	while (offset < msgLen || firstIter) {
 		if (msgLen - 199 >= 0) {
 			chunkSize = 199;
 		} else {
@@ -363,9 +370,10 @@ void sendChunkByChunk(uint8_t *appHeader, int headerLen, char *msg, uint8_t *fla
 		memcpy(packetBuff + headerLen, msg + offset, chunkSize);
 		memcpy(packetBuff + headerLen + chunkSize, &nullChar, 1);
 
-		sendPDU(clientSocket, packetBuff, headerLen + chunkSize + 1, flag_p);
+		safeSendPDU(clientSocket, packetBuff, headerLen + chunkSize + 1, flag_p);
 
 		offset += chunkSize;
+		firstIter = false;
 	}
 }
 

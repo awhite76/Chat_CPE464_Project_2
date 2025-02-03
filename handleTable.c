@@ -79,7 +79,7 @@ int addHandle(char *handle, int socket) {
 void removeHandle(char *handle) {
     // Iterate over table until you find table entry with given handle
     for (int i = 0; i < tableCapacity; i++) {        
-        // Compare current socket with searching socket
+        // Compare current handle with searching handle
         if (strcmp(table[i].handle, handle) == 0) {
             table[i].handle[0] = '\0';
             table[i].socket = 0;

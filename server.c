@@ -35,11 +35,11 @@ int checkArgs(int argc, char *argv[]);
 void serverControl(int mainServerSocket);
 void addNewSocket(int mainServerSocket);
 void processClient(int clientSocket);
-void sendToClient(int socketNum, uint8_t *data_buff, int sendLen, uint8_t *flag);
 void newClient(uint8_t *buff, int msgLen, int socket);
-void rerouteMessage(uint8_t *buff, int lengthOfData, uint8_t *flag_p);
+void rerouteMessage(int srcSocket, uint8_t *buff, int lengthOfData, uint8_t *flag_p);
 void sendHandleList(int clientSocket);
 void broadcastMessage(uint8_t *buff, int messageLen);
+void badDstHandle(int srcSocket, char *handle);
 
 int main(int argc, char *argv[])
 {
@@ -71,7 +71,9 @@ void recvFromClient(int clientSocket) {
 		close(clientSocket);
 		removeFromPollSet(clientSocket);
 		char *handleToRemove = lookUpBysocket(clientSocket);
-		removeHandle(handleToRemove);
+		if (handleToRemove) {
+			removeHandle(handleToRemove);
+		}
 		printf("Connection closed by other side\n");
 		return;
 	}
@@ -94,7 +96,7 @@ void recvFromClient(int clientSocket) {
 
 		case 6:
 			/* Multicast */
-			rerouteMessage(dataBuffer, messageLen, &flag);
+			rerouteMessage(clientSocket, dataBuffer, messageLen, &flag);
 			break;
 
 		case 10:
@@ -106,21 +108,6 @@ void recvFromClient(int clientSocket) {
 			fprintf(stderr, "Improper flag number: %d\n", flag);
 			return;
 			break;
-	}
-}
-
-void sendToClient(int socketNum, uint8_t *data_buff, int sendLen, uint8_t *flag) {
-	int sent = 0;           
-	
-	if (sendLen > MAXBUF - 3) {
-		fprintf(stderr, "Send buffer is too large\n");
-		exit(-1);
-	}
-	
-	sent = sendPDU(socketNum, data_buff, sendLen, flag);
-	if (sent < 0) {
-		perror("send call");
-		exit(-1);
 	}
 }
 
@@ -195,15 +182,14 @@ void newClient(uint8_t *buff, int msgLen, int socket) {
 	uint8_t flag;
 	if (res == 0) {
 		flag = 2;
-		uint8_t *buff = (uint8_t *)"\0";
-		sendToClient(socket, buff, 1, &flag);
+		safeSendPDU(socket, NULL, 0, &flag);
 	} else {
 		flag = 3;
-		sendToClient(socket, buff, msgLen, &flag);
+		safeSendPDU(socket, NULL, 0, &flag);
 	}
 }
 
-void rerouteMessage(uint8_t *buff, int lengthOfData, uint8_t *flag_p) {
+void rerouteMessage(int srcSocket, uint8_t *buff, int lengthOfData, uint8_t *flag_p) {
 	uint8_t srcHandle[100], dstHandle[101], srcLen, dstLen, dstNum;
 	int socket = 0;
 
@@ -227,14 +213,14 @@ void rerouteMessage(uint8_t *buff, int lengthOfData, uint8_t *flag_p) {
 		socket = lookUpHandle((char *)dstHandle);
 		if (socket < 0) {
 			fprintf(stderr, "Couldn't find handle: %s\n", dstHandle);
-			// send flag 7
+			badDstHandle(srcSocket, (char *)dstHandle);
 			continue;
 		}
 
 		printf("Sending on socket: %d\n", socket);
 
 		// Send packet
-		sendPDU(socket, buff, lengthOfData, flag_p);
+		safeSendPDU(socket, buff, lengthOfData, flag_p);
 	}
 }
 
@@ -247,7 +233,7 @@ void sendHandleList(int clientSocket) {
 	int listPopulation_n = htonl(list_population);
 
 	memcpy(buff, &listPopulation_n, 4);
-	sendToClient(clientSocket, buff, 4, &flag);
+	safeSendPDU(clientSocket, buff, 4, &flag);
 
 	// Iteratively get handles and send to client
 	char handle[100];
@@ -265,13 +251,13 @@ void sendHandleList(int clientSocket) {
 		memcpy(buff + 1, handle, handleLen);
 
 		// Send packet with handle (flag 12)
-		sendToClient(clientSocket, buff, handleLen + 1, &flag);
+		safeSendPDU(clientSocket, buff, handleLen + 1, &flag);
 	}
 
 	// Send done packet (flag 13)
 	flag = 13;
 	memset(buff, 0, MAXBUF);
-	sendToClient(clientSocket, buff, 1, &flag);
+	safeSendPDU(clientSocket, buff, 1, &flag);
 }
 
 void broadcastMessage(uint8_t *buff, int messageLen) {
@@ -306,7 +292,20 @@ void broadcastMessage(uint8_t *buff, int messageLen) {
 		}
 
 		// Send to destination
-		sendToClient(dstSocket, buff, messageLen, &flag);
+		safeSendPDU(dstSocket, buff, messageLen, &flag);
 	}
+}
+
+void badDstHandle(int srcSocket, char *handle) {
+	uint8_t buff[MAXBUF];
+	uint8_t flag = 7;
+	
+	// Populate send buffer
+	uint8_t handleLen = (uint8_t)strlen(handle);
+	memcpy(buff, &handleLen, 1);
+	memcpy(buff + 1, handle, handleLen);
+
+	// Send back to client
+	safeSendPDU(srcSocket, buff, 1 + handleLen, &flag);
 }
 

@@ -52,7 +52,7 @@ int main(int argc, char * argv[])
 	checkArgs(argc, argv);
 
 	// set up the TCP Client socket
-	clientSocket = tcpClientSetup(argv[2], argv[3], DEBUG_FLAG);
+	clientSocket = tcpClientSetup(argv[2], argv[3], 0);
 
 	// Send client handle to server
 	sendHandle(argv[1]);
@@ -90,9 +90,13 @@ int readFromStdin(uint8_t * buffer)
 void checkArgs(int argc, char * argv[])
 {
 	/* check command line arguments  */
-	if (argc != 4)
-	{
+	if (argc != 4) {
 		printf("usage: %s client-handle host-name port-number \n", argv[0]);
+		exit(1);
+	}
+
+	if (strlen(argv[1]) > 100) {
+		printf("Invalid handle, handle longer than 100 characters: %s\n", argv[1]);
 		exit(1);
 	}
 }
@@ -117,7 +121,7 @@ void clientControl() {
 
 void processStdin() {
 	uint8_t buff[MAXBUF], buffcp[MAXBUF];   
-	int sendLen = readFromStdin(buff);
+	readFromStdin(buff);
 	memcpy(buffcp, buff, MAXBUF);
 
 	// Extract command using strtok
@@ -136,10 +140,10 @@ void processStdin() {
         broadcastMessage(buff);
     } else if (strcmp(command, "%L") == 0 || strcmp(command, "%l") == 0) {
 		uint8_t flag = 10;
-        safeSendPDU(clientSocket, buff, sendLen, &flag);
+        safeSendPDU(clientSocket, NULL, 0, &flag);
 		return;
     } else {
-        printf("Unknown command: %s\n", command);
+        printf("Invalid command: %s\n", command);
     }
 
 	printf("$: ");
@@ -156,7 +160,7 @@ void processMsgFromServer() {
     recvLen = recvPDU(clientSocket, recvBuf, MAXBUF, &flag);
     if (recvLen == 0) {
         // Server has terminated the connection
-        printf("\nServer has terminated\n");
+        printf("\nServer Terminated\n");
         close(clientSocket);
         exit(0);
     } else if (recvLen < 0) {

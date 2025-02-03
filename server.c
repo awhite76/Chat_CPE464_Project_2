@@ -149,7 +149,7 @@ void serverControl(int mainServerSocket) {
 
 void addNewSocket(int mainServerSocket) {
 	// wait for client to connect
-	int clientSocket = tcpAccept(mainServerSocket, DEBUG_FLAG);
+	int clientSocket = tcpAccept(mainServerSocket, 0);
 
 	// Add client socket to poll set
 	addToPollSet(clientSocket);
@@ -217,7 +217,7 @@ void rerouteMessage(int srcSocket, uint8_t *buff, int lengthOfData, uint8_t *fla
 			continue;
 		}
 
-		printf("Sending on socket: %d\n", socket);
+		printf("Rerouting to socket: %d\n", socket);
 
 		// Send packet
 		safeSendPDU(socket, buff, lengthOfData, flag_p);

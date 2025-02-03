@@ -3,7 +3,8 @@
 
 #include <stdint.h>
 
-struct TableEntry {
+struct TableEntry
+{
     char handle[101];
     int socket;
 };

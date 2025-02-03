@@ -1,10 +1,10 @@
 /******************************************************************************
-* myServer.c
-* 
-* Writen by Prof. Smith, updated Jan 2023
-* Use at your own risk.  
-*
-*****************************************************************************/
+ * myServer.c
+ *
+ * Writen by Prof. Smith, updated Jan 2023
+ * Use at your own risk.
+ *
+ *****************************************************************************/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,14 +43,14 @@ void badDstHandle(int srcSocket, char *handle);
 
 int main(int argc, char *argv[])
 {
-	int mainServerSocket = 0;   //socket descriptor for the server socket
+	int mainServerSocket = 0; // socket descriptor for the server socket
 	int portNumber = 0;
-	
+
 	portNumber = checkArgs(argc, argv);
-	
-	//create the server socket
+
+	// create the server socket
 	mainServerSocket = tcpServerSetup(portNumber);
-	
+
 	// Initialize handle table
 	initTable();
 
@@ -59,19 +59,22 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
-void recvFromClient(int clientSocket) {
+void recvFromClient(int clientSocket)
+{
 	uint8_t dataBuffer[MAXBUF];
 	uint8_t flag;
 	int messageLen = 0;
-	
-	//now get the data from the client_socket
+
+	// now get the data from the client_socket
 	messageLen = recvPDU(clientSocket, dataBuffer, MAXBUF, &flag);
 
-	if (messageLen <= 0) {
+	if (messageLen <= 0)
+	{
 		close(clientSocket);
 		removeFromPollSet(clientSocket);
 		char *handleToRemove = lookUpBysocket(clientSocket);
-		if (handleToRemove) {
+		if (handleToRemove)
+		{
 			removeHandle(handleToRemove);
 		}
 		printf("Connection closed by other side\n");
@@ -80,34 +83,37 @@ void recvFromClient(int clientSocket) {
 
 	printf("Message received on socket %d, length: %d, Data: %s, Flag: %d\n", clientSocket, messageLen, dataBuffer, flag);
 
-	switch (flag) {
-		case 1: {
-			/* Send client handle to server */
-			newClient(dataBuffer, messageLen, clientSocket);
-			break;
-		}
-		case 4: {
-			/* Broadcast */
-			broadcastMessage(dataBuffer, messageLen);
-			break;
-		}
-		case 5:
-			/* Unicast Message (Same as flag 6) */
+	switch (flag)
+	{
+	case 1:
+	{
+		/* Send client handle to server */
+		newClient(dataBuffer, messageLen, clientSocket);
+		break;
+	}
+	case 4:
+	{
+		/* Broadcast */
+		broadcastMessage(dataBuffer, messageLen);
+		break;
+	}
+	case 5:
+		/* Unicast Message (Same as flag 6) */
 
-		case 6:
-			/* Multicast */
-			rerouteMessage(clientSocket, dataBuffer, messageLen, &flag);
-			break;
+	case 6:
+		/* Multicast */
+		rerouteMessage(clientSocket, dataBuffer, messageLen, &flag);
+		break;
 
-		case 10:
-			/* Request List of Handles */
-			sendHandleList(clientSocket);
-			break;
-		
-		default:
-			fprintf(stderr, "Improper flag number: %d\n", flag);
-			return;
-			break;
+	case 10:
+		/* Request List of Handles */
+		sendHandleList(clientSocket);
+		break;
+
+	default:
+		fprintf(stderr, "Improper flag number: %d\n", flag);
+		return;
+		break;
 	}
 }
 
@@ -121,33 +127,39 @@ int checkArgs(int argc, char *argv[])
 		fprintf(stderr, "Usage %s [optional port number]\n", argv[0]);
 		exit(-1);
 	}
-	
+
 	if (argc == 2)
 	{
 		portNumber = atoi(argv[1]);
 	}
-	
+
 	return portNumber;
 }
 
-void serverControl(int mainServerSocket) {
+void serverControl(int mainServerSocket)
+{
 	int socketNumber = 0;
 	// Initialize poll set
 	setupPollSet();
 	addToPollSet(mainServerSocket);
 
 	// Control loop
-	for (;;) {
+	for (;;)
+	{
 		socketNumber = pollCall(-1);
-		if (socketNumber == mainServerSocket) {
+		if (socketNumber == mainServerSocket)
+		{
 			addNewSocket(mainServerSocket);
-		} else {
+		}
+		else
+		{
 			processClient(socketNumber);
 		}
 	}
 }
 
-void addNewSocket(int mainServerSocket) {
+void addNewSocket(int mainServerSocket)
+{
 	// wait for client to connect
 	int clientSocket = tcpAccept(mainServerSocket, 0);
 
@@ -155,22 +167,25 @@ void addNewSocket(int mainServerSocket) {
 	addToPollSet(clientSocket);
 }
 
-void processClient(int clientSocket) {
+void processClient(int clientSocket)
+{
 	// Receive PDU
 	recvFromClient(clientSocket);
 }
 
-void newClient(uint8_t *buff, int msgLen, int socket) {
+void newClient(uint8_t *buff, int msgLen, int socket)
+{
 	uint8_t handleSize;
 	uint8_t handle[101];
-	
+
 	// Extract from buffer
 	memcpy(&handleSize, buff, 1);
 	memcpy(handle, buff + 1, handleSize);
 	handle[handleSize] = '\0';
 
 	// Check if valid handle
-	if (strlen((char *)handle) == 0) {
+	if (strlen((char *)handle) == 0)
+	{
 		fprintf(stderr, "Can't set handle to empty string\n");
 		return;
 	}
@@ -180,16 +195,20 @@ void newClient(uint8_t *buff, int msgLen, int socket) {
 
 	// Send response to client
 	uint8_t flag;
-	if (res == 0) {
+	if (res == 0)
+	{
 		flag = 2;
 		safeSendPDU(socket, NULL, 0, &flag);
-	} else {
+	}
+	else
+	{
 		flag = 3;
 		safeSendPDU(socket, NULL, 0, &flag);
 	}
 }
 
-void rerouteMessage(int srcSocket, uint8_t *buff, int lengthOfData, uint8_t *flag_p) {
+void rerouteMessage(int srcSocket, uint8_t *buff, int lengthOfData, uint8_t *flag_p)
+{
 	uint8_t srcHandle[100], dstHandle[101], srcLen, dstLen, dstNum;
 	int socket = 0;
 
@@ -200,7 +219,8 @@ void rerouteMessage(int srcSocket, uint8_t *buff, int lengthOfData, uint8_t *fla
 
 	// Iteratively set destination
 	int offset = 2 + srcLen;
-	for (int i = 0; i < dstNum; i++) {
+	for (int i = 0; i < dstNum; i++)
+	{
 		memcpy(&dstLen, buff + offset, 1);
 		memcpy(dstHandle, buff + offset + 1, dstLen);
 
@@ -211,7 +231,8 @@ void rerouteMessage(int srcSocket, uint8_t *buff, int lengthOfData, uint8_t *fla
 
 		// Look up socket number of dst
 		socket = lookUpHandle((char *)dstHandle);
-		if (socket < 0) {
+		if (socket < 0)
+		{
 			fprintf(stderr, "Couldn't find handle: %s\n", dstHandle);
 			badDstHandle(srcSocket, (char *)dstHandle);
 			continue;
@@ -224,7 +245,8 @@ void rerouteMessage(int srcSocket, uint8_t *buff, int lengthOfData, uint8_t *fla
 	}
 }
 
-void sendHandleList(int clientSocket) {
+void sendHandleList(int clientSocket)
+{
 	uint8_t buff[MAXBUF];
 
 	// Send number of handles in table
@@ -239,9 +261,11 @@ void sendHandleList(int clientSocket) {
 	char handle[100];
 	uint8_t handleLen = 0;
 	flag = 12;
-	for (int i = 0; i < list_population; i++) {
+	for (int i = 0; i < list_population; i++)
+	{
 		handleLen = getIthHandle(i + 1, handle);
-		if (handleLen <= 0) {
+		if (handleLen <= 0)
+		{
 			printf("Couldn't find %d handle\n", i + 1);
 			break;
 		}
@@ -260,7 +284,8 @@ void sendHandleList(int clientSocket) {
 	safeSendPDU(clientSocket, buff, 1, &flag);
 }
 
-void broadcastMessage(uint8_t *buff, int messageLen) {
+void broadcastMessage(uint8_t *buff, int messageLen)
+{
 	uint8_t flag = 4;
 
 	// Parse sender handle
@@ -273,20 +298,24 @@ void broadcastMessage(uint8_t *buff, int messageLen) {
 	int tablePopulation = getTablePopulation();
 	uint8_t dstHandle[101], dstLen;
 	int dstSocket = 0;
-	for (int i = 0; i < tablePopulation; i++) {
+	for (int i = 0; i < tablePopulation; i++)
+	{
 		dstLen = getIthHandle(i + 1, (char *)dstHandle);
-		if (dstLen <= 0) {
+		if (dstLen <= 0)
+		{
 			printf("Couldn't find %d handle\n", i + 1);
 			break;
 		}
 
 		// Dont send message back to sender
-		if (strcmp((char *)srcHandle, (char *)dstHandle) == 0) {
+		if (strcmp((char *)srcHandle, (char *)dstHandle) == 0)
+		{
 			continue;
 		}
 
 		dstSocket = lookUpHandle((char *)dstHandle);
-		if (dstSocket < 0) {
+		if (dstSocket < 0)
+		{
 			fprintf(stderr, "Couldn't find handle: %s\n", dstHandle);
 			continue;
 		}
@@ -296,10 +325,11 @@ void broadcastMessage(uint8_t *buff, int messageLen) {
 	}
 }
 
-void badDstHandle(int srcSocket, char *handle) {
+void badDstHandle(int srcSocket, char *handle)
+{
 	uint8_t buff[MAXBUF];
 	uint8_t flag = 7;
-	
+
 	// Populate send buffer
 	uint8_t handleLen = (uint8_t)strlen(handle);
 	memcpy(buff, &handleLen, 1);
@@ -308,4 +338,3 @@ void badDstHandle(int srcSocket, char *handle) {
 	// Send back to client
 	safeSendPDU(srcSocket, buff, 1 + handleLen, &flag);
 }
-

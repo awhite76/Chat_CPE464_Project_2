@@ -10,22 +10,27 @@ struct TableEntry *table;
 int tableCapacity;
 int tablePopulation;
 
-void initTable() {
+void initTable()
+{
     // Allocate 5 entries to the table
     table = (struct TableEntry *)sCalloc(5, sizeof(struct TableEntry));
     tableCapacity = 5;
     tablePopulation = 0;
 }
 
-int getTablePopulation() {
+int getTablePopulation()
+{
     return tablePopulation;
 }
 
-int lookUpHandle(char *handle) {
+int lookUpHandle(char *handle)
+{
     // Iterate over table entries
-    for (int i = 0; i < tableCapacity; i++) {        
+    for (int i = 0; i < tableCapacity; i++)
+    {
         // Compare current handle with searching handle
-        if (strcmp(handle, table[i].handle) == 0) {
+        if (strcmp(handle, table[i].handle) == 0)
+        {
             return table[i].socket;
         }
     }
@@ -34,11 +39,14 @@ int lookUpHandle(char *handle) {
     return -1;
 }
 
-char *lookUpBysocket(int socket) {
+char *lookUpBysocket(int socket)
+{
     // Iterate over table entries
-    for (int i = 0; i < tableCapacity; i++) {        
+    for (int i = 0; i < tableCapacity; i++)
+    {
         // Compare current socket with searching socket
-        if (socket == table[i].socket) {
+        if (socket == table[i].socket)
+        {
             return table[i].handle;
         }
     }
@@ -47,23 +55,28 @@ char *lookUpBysocket(int socket) {
     return NULL;
 }
 
-int addHandle(char *handle, int socket) {
+int addHandle(char *handle, int socket)
+{
     // Check if you need to increase table size
-    if (tablePopulation + 1 >= tableCapacity) {
+    if (tablePopulation + 1 >= tableCapacity)
+    {
         tableCapacity += 5;
         table = srealloc(table, tableCapacity * sizeof(struct TableEntry));
     }
 
     // Iterate over table, store first open index, and check for matching handle
     int idx = -1;
-    for (int i = 0; i < tableCapacity; i++) {        
+    for (int i = 0; i < tableCapacity; i++)
+    {
         // Compare current handle with empty string
-        if (idx == -1 && strcmp(table[i].handle, "") == 0) {
+        if (idx == -1 && strcmp(table[i].handle, "") == 0)
+        {
             idx = i;
         }
 
         // Compare current handle with searching handle
-        if (strcmp(table[i].handle, handle) == 0) {
+        if (strcmp(table[i].handle, handle) == 0)
+        {
             fprintf(stderr, "Handle already in handle table\n");
             return -1;
         }
@@ -76,11 +89,14 @@ int addHandle(char *handle, int socket) {
     return 0;
 }
 
-void removeHandle(char *handle) {
+void removeHandle(char *handle)
+{
     // Iterate over table until you find table entry with given handle
-    for (int i = 0; i < tableCapacity; i++) {        
+    for (int i = 0; i < tableCapacity; i++)
+    {
         // Compare current handle with searching handle
-        if (strcmp(table[i].handle, handle) == 0) {
+        if (strcmp(table[i].handle, handle) == 0)
+        {
             table[i].handle[0] = '\0';
             table[i].socket = 0;
             tablePopulation -= 1;
@@ -89,18 +105,22 @@ void removeHandle(char *handle) {
     }
 }
 
-uint8_t getIthHandle(int idx, char *handle) { // 1 based indexing
+uint8_t getIthHandle(int idx, char *handle)
+{ // 1 based indexing
     // Iterate over table until you get the ith handle
     int count = 0;
     uint8_t handleLen = 0;
-    for (int i = 0; i < tableCapacity; i++) {
+    for (int i = 0; i < tableCapacity; i++)
+    {
         // If table entry is not empty increment the count
-        if (strcmp(table[i].handle, "")) {
+        if (strcmp(table[i].handle, ""))
+        {
             count++;
         }
 
         // Copy handle to buffer and return length
-        if (count == idx) {
+        if (count == idx)
+        {
             handleLen = strlen(table[i].handle);
             memcpy(handle, table[i].handle, handleLen);
             return handleLen;
@@ -109,5 +129,3 @@ uint8_t getIthHandle(int idx, char *handle) { // 1 based indexing
 
     return handleLen;
 }
-
-

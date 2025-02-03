@@ -2,7 +2,6 @@
 // 	Writen - HMS April 2017
 //  Supports TCP and UDP - both client and server
 
-
 #ifndef __NETWORKS_H__
 #define __NETWORKS_H__
 
@@ -23,10 +22,10 @@ int tcpServerSetup(int serverPort);
 int tcpAccept(int mainServerSocket, int debugFlag);
 
 // for the TCP client side
-int tcpClientSetup(char * serverName, char * serverPort, int debugFlag);
+int tcpClientSetup(char *serverName, char *serverPort, int debugFlag);
 
 // For UDP Server and Client
 int udpServerSetup(int serverPort);
-int setupUdpClientToServer(struct sockaddr_in6 *serverAddress, char * hostName, int serverPort);
+int setupUdpClientToServer(struct sockaddr_in6 *serverAddress, char *hostName, int serverPort);
 
 #endif
